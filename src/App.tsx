@@ -13,7 +13,13 @@ import { StorageTab } from './components/tabs/StorageTab';
 import './App.css';
 
 export const AppContent: React.FC = () => {
-  const [currentTab, setCurrentTab] = useState<TabType>('scenario');
+  const [currentTab, setCurrentTab] = useState<TabType>(() => {
+    const query = new URLSearchParams(window.location.search);
+    if (query.get('toss_status') || query.get('paymentKey')) {
+      return 'reservation';
+    }
+    return 'scenario';
+  });
 
   return (
     <div className="app-layout">
