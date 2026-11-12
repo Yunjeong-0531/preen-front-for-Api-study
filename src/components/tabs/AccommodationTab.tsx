@@ -16,6 +16,7 @@ import {
 } from '../../api/types';
 import { useAuth } from '../../context/AuthContext';
 import { Star, MessageSquare, Music, Image as ImageIcon } from 'lucide-react';
+import { SpotifyPlayerWidget } from '../common/SpotifyPlayerWidget';
 
 export const AccommodationTab: React.FC = () => {
   const { isLoggedIn } = useAuth();
@@ -513,24 +514,13 @@ export const AccommodationTab: React.FC = () => {
                           </div>
                         )}
 
-                        {/* 등록된 Spotify 트랙 정보 */}
+                        {/* 등록된 Spotify 트랙 정보 및 플레이어 */}
                         {rev.spotifyTrackId && (
-                          <div
-                            style={{
-                              marginTop: '8px',
-                              padding: '6px 10px',
-                              background: '#ecfdf5',
-                              border: '1px solid #a7f3d0',
-                              borderRadius: '4px',
-                              fontSize: '12px',
-                              color: '#065f46',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                            }}
-                          >
-                            <Music size={14} color="#059669" />
-                            <span>추천 배경음악: Spotify Track ID <code>{rev.spotifyTrackId}</code></span>
+                          <div style={{ marginTop: '10px' }}>
+                            <div style={{ fontSize: '12px', fontWeight: 600, color: '#059669', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                              <Music size={14} /> 게스트가 추천한 배경음악:
+                            </div>
+                            <SpotifyPlayerWidget trackId={rev.spotifyTrackId} compact={true} />
                           </div>
                         )}
 
@@ -558,15 +548,21 @@ export const AccommodationTab: React.FC = () => {
 
               {/* 숙소 추천 트랙 모음 (GET /api/accommodations/{id}/tracks) */}
               {tracks.length > 0 && (
-                <div style={{ marginTop: '16px', background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
-                  <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#166534', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Music size={15} color="#16a34a" /> 이 숙소의 추천 음악 리스트 (총 {tracks.length}곡)
-                  </h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div style={{ marginTop: '20px', background: '#f8fafc', padding: '16px', borderRadius: '10px', border: '1px solid #cbd5e1' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <h4 style={{ margin: 0, fontSize: '14px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Music size={16} color="#16a34a" /> 🎧 이 숙소의 인기 배경음악 플레이리스트 ({tracks.length}곡)
+                    </h4>
+                    <span style={{ fontSize: '12px', color: '#64748b' }}>게스트 리뷰 추천 기반</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px' }}>
                     {tracks.map((trk, i) => (
-                      <div key={i} style={{ fontSize: '12px', color: '#15803d', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>🎵 Spotify Track: <code>{trk.spotifyTrackId}</code></span>
-                        <span>리뷰 {trk.reviewCount}회 추천</span>
+                      <div key={i} style={{ background: '#ffffff', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '12px' }}>
+                          <span style={{ fontWeight: 600, color: '#334155' }}>추천 #{i + 1}</span>
+                          <span className="badge badge-success" style={{ fontSize: '11px' }}>리뷰 {trk.reviewCount}회 추천</span>
+                        </div>
+                        <SpotifyPlayerWidget trackId={trk.spotifyTrackId} compact={true} />
                       </div>
                     ))}
                   </div>

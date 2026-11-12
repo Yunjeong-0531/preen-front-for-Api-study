@@ -3,6 +3,7 @@ import { reviewApi } from '../../api/reviewApi';
 import { spotifyApi } from '../../api/spotifyApi';
 import { ReviewResponse, SpotifyTrack } from '../../api/types';
 import { useAuth } from '../../context/AuthContext';
+import { SpotifyPlayerWidget } from '../common/SpotifyPlayerWidget';
 
 export const ReviewTab: React.FC = () => {
   const { isLoggedIn } = useAuth();
@@ -353,16 +354,7 @@ export const ReviewTab: React.FC = () => {
 
                 {rev.spotifyTrackId && (
                   <div style={{ marginTop: '8px' }}>
-                    <iframe
-                      title={`Review Spotify ${rev.id}`}
-                      src={`https://open.spotify.com/embed/track/${rev.spotifyTrackId}?utm_source=generator`}
-                      width="100%"
-                      height="80"
-                      frameBorder="0"
-                      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                      loading="lazy"
-                      style={{ borderRadius: '8px' }}
-                    />
+                    <SpotifyPlayerWidget trackId={rev.spotifyTrackId} compact={true} />
                   </div>
                 )}
 
