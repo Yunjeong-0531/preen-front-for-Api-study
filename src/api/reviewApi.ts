@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import { ApiResponse, PageResponse, ReviewCreateRequest, ReviewResponse, ReviewUpdateRequest } from './types';
+import { ApiResponse, PageResponse, ReviewCreateRequest, ReviewResponse, ReviewUpdateRequest, AccommodationTrackResponse } from './types';
 
 export const reviewApi = {
   // 숙소 리뷰 목록 (공개)
@@ -9,6 +9,14 @@ export const reviewApi = {
       {
         params: { page, size },
       }
+    );
+    return res.data;
+  },
+
+  // 숙소별 트랙 목록 (공개)
+  getTracksForAccommodation: async (accommodationId: number) => {
+    const res = await apiClient.get<ApiResponse<AccommodationTrackResponse[]>>(
+      `/api/accommodations/${accommodationId}/tracks`
     );
     return res.data;
   },

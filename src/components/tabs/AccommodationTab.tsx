@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { accommodationApi } from '../../api/accommodationApi';
 import { inventoryApi } from '../../api/inventoryApi';
 import { favoriteApi } from '../../api/favoriteApi';
+import { reviewApi } from '../../api/reviewApi';
 import {
   AccommodationDetail,
   AccommodationSummary,
@@ -10,8 +11,11 @@ import {
   FavoriteResponse,
   RegionResponse,
   RoomAvailability,
+  ReviewResponse,
+  AccommodationTrackResponse,
 } from '../../api/types';
 import { useAuth } from '../../context/AuthContext';
+import { Star, MessageSquare, Music, Image as ImageIcon } from 'lucide-react';
 
 export const AccommodationTab: React.FC = () => {
   const { isLoggedIn } = useAuth();
@@ -33,6 +37,11 @@ export const AccommodationTab: React.FC = () => {
   // 상세 조회
   const [selectedAccId, setSelectedAccId] = useState<number | null>(null);
   const [accDetail, setAccDetail] = useState<AccommodationDetail | null>(null);
+
+  // 숙소 리뷰 및 트랙
+  const [reviews, setReviews] = useState<ReviewResponse[]>([]);
+  const [tracks, setTracks] = useState<AccommodationTrackResponse[]>([]);
+  const [isLoadingReviews, setIsLoadingReviews] = useState(false);
 
   // 예약 가능 여부 및 요금 계산 폼
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -86,8 +95,36 @@ export const AccommodationTab: React.FC = () => {
       }
       // 자동으로 날짜별 재고/요금도 조회
       checkAvailability(id, checkIn, checkOut);
+      // 숙소 리뷰 및 트랙 조회
+      loadReviewsAndTracks(id);
     } catch (err: any) {
       alert('상세 조회 실패: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  const loadReviewsAndTracks = async (id: number) => {
+    setIsLoadingReviews(true);
+    try {
+      const [revRes, trkRes] = await Promise.all([
+        reviewApi.getForAccommodation(id, 0, 20),
+        reviewApi.getTracksForAccommodation(id),
+      ]);
+      if (revRes.success && revRes.data) {
+        setReviews(revRes.data.content);
+      } else {
+        setReviews([]);
+      }
+      if (trkRes.success && trkRes.data) {
+        setTracks(trkRes.data);
+      } else {
+        setTracks([]);
+      }
+    } catch (err: any) {
+      console.warn('숙소 리뷰/트랙 로드 실패', err);
+      setReviews([]);
+      setTracks([]);
+    } finally {
+      setIsLoadingReviews(false);
     }
   };
 
@@ -407,6 +444,134 @@ export const AccommodationTab: React.FC = () => {
                   )}
                 </div>
               </div>
+
+              {/* 숙소 리뷰 목록 (GET /api/accommodations/{id}/reviews) */}
+              <div style={{ marginTop: '20px', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Star size={16} color="#eab308" fill="#eab308" />
+                    숙소 리뷰 ({reviews.length}개)
+                  </h4>
+                  {selectedAccId && (
+                    <button
+                      className="btn-outline-sm"
+                      onClick={() => loadReviewsAndTracks(selectedAccId)}
+                      disabled={isLoadingReviews}
+                    >
+                      {isLoadingReviews ? '로딩 중...' : '리뷰 새로고침'}
+                    </button>
+                  )}
+                </div>
+
+                {reviews.length === 0 ? (
+                  <p style={{ color: '#64748b', fontSize: '13px', margin: '8px 0' }}>
+                    아직 등록된 숙소 리뷰가 없습니다. (숙박 완료된 예약 건에 대해 리뷰 탭에서 작성할 수 있습니다.)
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {reviews.map((rev) => (
+                      <div
+                        key={rev.id}
+                        style={{
+                          background: '#f8fafc',
+                          padding: '12px',
+                          borderRadius: '8px',
+                          border: '1px solid #e2e8f0',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <strong style={{ fontSize: '13px' }}>{rev.authorName || '게스트'}</strong>
+                            <span style={{ marginLeft: '8px', color: '#eab308', fontWeight: 600 }}>
+                              {'★'.repeat(rev.rating)}
+                              {'☆'.repeat(5 - rev.rating)}
+                            </span>
+                            <span style={{ marginLeft: '4px', fontSize: '12px', color: '#64748b' }}>
+                              ({rev.rating}점)
+                            </span>
+                          </div>
+                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                            {rev.createdAt ? new Date(rev.createdAt).toLocaleDateString() : ''}
+                          </span>
+                        </div>
+
+                        <p style={{ margin: '8px 0', fontSize: '13px', color: '#334155', whiteSpace: 'pre-wrap' }}>
+                          {rev.content}
+                        </p>
+
+                        {/* 리뷰 이미지 */}
+                        {rev.imageUrls && rev.imageUrls.length > 0 && (
+                          <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                            {rev.imageUrls.map((imgUrl, i) => (
+                              <img
+                                key={i}
+                                src={imgUrl}
+                                alt="리뷰 이미지"
+                                style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '4px' }}
+                              />
+                            ))}
+                          </div>
+                        )}
+
+                        {/* 등록된 Spotify 트랙 정보 */}
+                        {rev.spotifyTrackId && (
+                          <div
+                            style={{
+                              marginTop: '8px',
+                              padding: '6px 10px',
+                              background: '#ecfdf5',
+                              border: '1px solid #a7f3d0',
+                              borderRadius: '4px',
+                              fontSize: '12px',
+                              color: '#065f46',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            <Music size={14} color="#059669" />
+                            <span>추천 배경음악: Spotify Track ID <code>{rev.spotifyTrackId}</code></span>
+                          </div>
+                        )}
+
+                        {/* 호스트 답글 */}
+                        {rev.hostReply && (
+                          <div
+                            style={{
+                              marginTop: '8px',
+                              padding: '8px 10px',
+                              background: '#eff6ff',
+                              borderLeft: '3px solid #3b82f6',
+                              borderRadius: '0 4px 4px 0',
+                              fontSize: '12px',
+                            }}
+                          >
+                            <strong style={{ color: '#1d4ed8' }}>호스트 답변:</strong>
+                            <p style={{ margin: '2px 0 0 0', color: '#1e3a8a' }}>{rev.hostReply}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 숙소 추천 트랙 모음 (GET /api/accommodations/{id}/tracks) */}
+              {tracks.length > 0 && (
+                <div style={{ marginTop: '16px', background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                  <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#166534', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Music size={15} color="#16a34a" /> 이 숙소의 추천 음악 리스트 (총 {tracks.length}곡)
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {tracks.map((trk, i) => (
+                      <div key={i} style={{ fontSize: '12px', color: '#15803d', display: 'flex', justifyContent: 'space-between' }}>
+                        <span>🎵 Spotify Track: <code>{trk.spotifyTrackId}</code></span>
+                        <span>리뷰 {trk.reviewCount}회 추천</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ color: '#64748b', textAlign: 'center', marginTop: '40px' }}>

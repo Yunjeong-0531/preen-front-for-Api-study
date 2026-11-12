@@ -373,6 +373,12 @@ export interface ReviewResponse {
   createdAt: string;
 }
 
+export interface AccommodationTrackResponse {
+  spotifyTrackId: string;
+  reviewCount: number;
+  lastAddedAt: string;
+}
+
 // Spotify Track
 export interface SpotifyTrack {
   id: string;
