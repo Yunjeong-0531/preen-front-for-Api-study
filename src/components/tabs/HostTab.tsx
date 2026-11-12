@@ -15,6 +15,7 @@ import {
   RegionResponse,
   ReservationResponse,
 } from '../../api/types';
+import { InventoryCalendar } from '../common/InventoryCalendar';
 
 export const HostTab: React.FC = () => {
   const { user, updateAccessToken } = useAuth();
@@ -875,35 +876,17 @@ export const HostTab: React.FC = () => {
             </button>
           </form>
 
-          {/* 재고 조회 결과 테이블 (GET 응답) */}
-          {roomInventories.length > 0 && (
-            <div style={{ marginTop: '14px', maxHeight: '180px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '4px' }}>
-              <table style={{ width: '100%', fontSize: '11px', textAlign: 'left', borderCollapse: 'collapse' }}>
-                <thead style={{ background: '#f1f5f9', position: 'sticky', top: 0 }}>
-                  <tr>
-                    <th style={{ padding: '4px 6px' }}>날짜</th>
-                    <th style={{ padding: '4px 6px' }}>수량</th>
-                    <th style={{ padding: '4px 6px' }}>예약</th>
-                    <th style={{ padding: '4px 6px' }}>선점</th>
-                    <th style={{ padding: '4px 6px' }}>가격</th>
-                    <th style={{ padding: '4px 6px' }}>마감</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {roomInventories.map((inv) => (
-                    <tr key={inv.stayDate} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '4px 6px' }}>{inv.stayDate}</td>
-                      <td style={{ padding: '4px 6px' }}>{inv.totalCount}</td>
-                      <td style={{ padding: '4px 6px', color: '#16a34a' }}>{inv.bookedCount}</td>
-                      <td style={{ padding: '4px 6px', color: '#ea580c' }}>{inv.heldCount}</td>
-                      <td style={{ padding: '4px 6px' }}>{inv.price.toLocaleString()}원</td>
-                      <td style={{ padding: '4px 6px' }}>{inv.closed ? '🔴' : '🟢'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {/* 📅 인터랙티브 재고 달력 (월별 캘린더 뷰) */}
+          <div style={{ marginTop: '16px' }}>
+            <InventoryCalendar
+              roomId={inventoryForm.roomId}
+              inventories={roomInventories}
+              onRefresh={(start, end) => {
+                setInventoryForm((prev) => ({ ...prev, startDate: start, endDate: end }));
+                loadRoomInventories(inventoryForm.roomId, start, end);
+              }}
+            />
+          </div>
         </div>
       </div>
 
