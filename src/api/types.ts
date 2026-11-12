@@ -133,6 +133,28 @@ export interface RefundPolicyResponse {
   rules: RefundRule[];
 }
 
+export type ListingStatus = 'DRAFT' | 'LISTED' | 'HIDDEN';
+
+export interface HostAccommodationSummary {
+  id: number;
+  name: string;
+  address: string;
+  regionId: number;
+  regionName: string;
+  categoryId: number;
+  categoryName: string;
+  thumbnailUrl: string | null;
+  listingStatus: ListingStatus;
+  roomCount: number;
+  activeRoomCount: number;
+  hasRefundPolicy: boolean;
+  readyToList: boolean;
+}
+
+export interface ListingStatusRequest {
+  listingStatus: ListingStatus;
+}
+
 export interface AccommodationDetail {
   id: number;
   name: string;
@@ -146,7 +168,7 @@ export interface AccommodationDetail {
   longitude: number;
   checkInTime: string;
   checkOutTime: string;
-  listingStatus: 'LISTED' | 'UNLISTED';
+  listingStatus: ListingStatus;
   imageUrls: string[];
   amenities: AmenityResponse[];
   rooms: RoomResponse[];

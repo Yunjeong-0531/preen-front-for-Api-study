@@ -7,7 +7,10 @@ import {
   AccommodationDetail,
   AmenityResponse,
   CategoryResponse,
+  HostAccommodationSummary,
   HostBusinessResponse,
+  InventoryResponse,
+  ListingStatus,
   RefundRule,
   RegionResponse,
   ReservationResponse,
@@ -16,7 +19,7 @@ import {
 export const HostTab: React.FC = () => {
   const { user, updateAccessToken } = useAuth();
 
-  // 사업자 정보
+  // 1. 사업자 정보
   const [businessInfo, setBusinessInfo] = useState<HostBusinessResponse | null>(null);
   const [businessForm, setBusinessForm] = useState({
     businessName: '프린스테이',
@@ -27,6 +30,11 @@ export const HostTab: React.FC = () => {
   const [regions, setRegions] = useState<RegionResponse[]>([]);
   const [categories, setCategories] = useState<CategoryResponse[]>([]);
   const [amenities, setAmenities] = useState<AmenityResponse[]>([]);
+
+  // 2. 호스트 내 숙소 목록 (GET /api/host/accommodations)
+  const [myAccommodations, setMyAccommodations] = useState<HostAccommodationSummary[]>([]);
+  const [selectedAccId, setSelectedAccId] = useState<number | null>(null);
+  const [selectedAccDetail, setSelectedAccDetail] = useState<AccommodationDetail | null>(null);
 
   // 숙소 등록 폼
   const [accForm, setAccForm] = useState({
@@ -40,9 +48,8 @@ export const HostTab: React.FC = () => {
     imageUrls: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800',
     amenityIds: [1, 2],
   });
-  const [createdAccommodation, setCreatedAccommodation] = useState<AccommodationDetail | null>(null);
 
-  // 객실 등록 폼
+  // 3. 객실 등록 폼
   const [targetAccIdForRoom, setTargetAccIdForRoom] = useState<number>(1);
   const [roomForm, setRoomForm] = useState({
     name: '디럭스 오션뷰 룸',
@@ -54,7 +61,7 @@ export const HostTab: React.FC = () => {
   });
   const [createdRoomId, setCreatedRoomId] = useState<number | null>(null);
 
-  // 환불정책 폼
+  // 4. 환불정책 폼
   const [targetAccIdForRefund, setTargetAccIdForRefund] = useState<number>(1);
   const [policyText, setPolicyText] = useState('체크인 7일 전 무료 취소, 3일 전 50%, 당일 취소 불가');
   const [rules, setRules] = useState<RefundRule[]>([
@@ -62,9 +69,8 @@ export const HostTab: React.FC = () => {
     { daysBefore: 3, refundRate: 0.5 },
     { daysBefore: 0, refundRate: 0.0 },
   ]);
-  const [refundStatusMsg, setRefundStatusMsg] = useState<{ text: string; error?: boolean } | null>(null);
 
-  // 재고 설정 폼
+  // 5. 재고 설정 & 조회 (GET & PUT /api/host/rooms/{roomId}/inventories)
   const todayStr = new Date().toISOString().split('T')[0];
   const nextMonthStr = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const [inventoryForm, setInventoryForm] = useState({
@@ -75,10 +81,7 @@ export const HostTab: React.FC = () => {
     price: 150000,
     closed: false,
   });
-
-  // 호스트 내 숙소 목록
-  const [myAccommodations, setMyAccommodations] = useState<AccommodationDetail[]>([]);
-  const [manualAccIdInput, setManualAccIdInput] = useState<string>('');
+  const [roomInventories, setRoomInventories] = useState<InventoryResponse[]>([]);
 
   // 호스트 예약 목록
   const [hostReservations, setHostReservations] = useState<ReservationResponse[]>([]);
@@ -117,67 +120,85 @@ export const HostTab: React.FC = () => {
     }
   };
 
-  const loadMyAccommodations = () => {
+  // 내 숙소 목록 조회 (GET /api/host/accommodations)
+  const loadMyAccommodations = async () => {
     try {
-      const stored = localStorage.getItem('staybook_registered_accommodations');
-      if (stored) {
-        setMyAccommodations(JSON.parse(stored));
-      }
-    } catch (e) {
-      console.warn('로컬 숙소 목록 로드 실패', e);
-    }
-  };
-
-  const saveMyAccommodation = (acc: AccommodationDetail) => {
-    setMyAccommodations((prev) => {
-      const filtered = prev.filter((item) => item.id !== acc.id);
-      const updated = [acc, ...filtered];
-      localStorage.setItem('staybook_registered_accommodations', JSON.stringify(updated));
-      return updated;
-    });
-  };
-
-  const handleToggleListingStatus = async (acc: AccommodationDetail) => {
-    const nextStatus: any = acc.listingStatus === 'LISTED' ? 'DRAFT' : 'LISTED';
-    try {
-      const res = await hostApi.updateAccommodation(acc.id, { listingStatus: nextStatus });
+      const res = await hostApi.getMyAccommodations();
       if (res.success && res.data) {
-        alert(`숙소 상태가 [${res.data.listingStatus}]로 변경되었습니다! ${res.data.listingStatus === 'LISTED' ? '이제 [숙소 탐색] 탭에서 게스트에게 노출됩니다.' : ''}`);
-        saveMyAccommodation(res.data);
+        setMyAccommodations(res.data);
+        if (res.data.length > 0 && !selectedAccId) {
+          handleSelectAccommodation(res.data[0].id);
+        }
       }
     } catch (err: any) {
-      const errMsg = err.response?.data?.message || err.response?.data?.code || err.message;
-      alert(`상태 변경 실패: ${errMsg}\n\n* 안내: 공개(LISTED)하려면 최소 1개 이상의 객실과 환불 정책이 등록되어 있어야 합니다.`);
+      console.warn('내 숙소 목록 로드 실패', err);
     }
   };
 
-  const handleRegisterManualId = () => {
-    const id = Number(manualAccIdInput);
-    if (!id) return;
-    const manualAcc: AccommodationDetail = {
-      id,
-      name: `숙소 #${id}`,
-      description: '',
-      address: '수동 추가 숙소',
-      regionId: 1,
-      regionName: '',
-      categoryId: 1,
-      categoryName: '',
-      latitude: 0,
-      longitude: 0,
-      checkInTime: '15:00:00',
-      checkOutTime: '11:00:00',
-      listingStatus: 'LISTED',
-      imageUrls: [],
-      amenities: [],
-      rooms: [],
-      refundPolicy: null,
-    };
-    saveMyAccommodation(manualAcc);
+  // 내 숙소 상세 조회 (GET /api/host/accommodations/{id})
+  const handleSelectAccommodation = async (id: number) => {
+    setSelectedAccId(id);
     setTargetAccIdForRoom(id);
     setTargetAccIdForRefund(id);
-    setManualAccIdInput('');
-    alert(`숙소 ID #${id}번이 내 숙소 관리 목록에 추가되었습니다.`);
+    try {
+      const res = await hostApi.getMyAccommodationDetail(id);
+      if (res.success && res.data) {
+        setSelectedAccDetail(res.data);
+        if (res.data.rooms && res.data.rooms.length > 0) {
+          const firstRoomId = res.data.rooms[0].id;
+          setInventoryForm((prev) => ({ ...prev, roomId: firstRoomId }));
+          loadRoomInventories(firstRoomId, inventoryForm.startDate, inventoryForm.endDate);
+        }
+      }
+    } catch (err: any) {
+      alert('숙소 상세 조회 실패: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  // 숙소 공개 상태 변경 (PATCH /api/host/accommodations/{id}/listing-status)
+  const handleChangeListingStatus = async (id: number, nextStatus: ListingStatus) => {
+    try {
+      const res = await hostApi.changeListingStatus(id, nextStatus);
+      if (res.success) {
+        alert(`🎉 상태 변경 완료! [${res.data.listingStatus}]\n${res.data.listingStatus === 'LISTED' ? '이제 [숙소 탐색] 탭에서 게스트에게 노출됩니다.' : ''}`);
+        loadMyAccommodations();
+        handleSelectAccommodation(id);
+      }
+    } catch (err: any) {
+      const errData = err.response?.data;
+      const errMsg = errData?.message || errData?.code || err.message;
+      alert(`상태 변경 실패 [${errData?.code || 'ERROR'}]:\n${errMsg}\n\n* 안내: 공개(LISTED)하려면 최소 1개 이상의 ACTIVE 객실과 환불 정책이 등록되어 있어야 합니다.`);
+    }
+  };
+
+  // 객실 판매 상태(ACTIVE / INACTIVE) 변경 (PATCH /api/host/accommodations/{id}/rooms/{roomId})
+  const handleToggleRoomStatus = async (roomId: number, currentStatus: 'ACTIVE' | 'INACTIVE') => {
+    if (!selectedAccId) return;
+    const nextStatus = currentStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    try {
+      const res = await hostApi.updateRoom(selectedAccId, roomId, { status: nextStatus });
+      if (res.success) {
+        alert(`객실 상태가 [${res.data.status}]로 변경되었습니다.`);
+        handleSelectAccommodation(selectedAccId);
+        loadMyAccommodations();
+      }
+    } catch (err: any) {
+      const errData = err.response?.data;
+      const errMsg = errData?.message || errData?.code || err.message;
+      alert(`객실 상태 변경 실패 [${errData?.code || 'ERROR'}]:\n${errMsg}\n\n* 안내: 공개 중인 숙소의 마지막 ACTIVE 객실은 INACTIVE로 바꿀 수 없습니다.`);
+    }
+  };
+
+  // 기간별 재고 조회 (GET /api/host/rooms/{roomId}/inventories)
+  const loadRoomInventories = async (roomId: number, start: string, end: string) => {
+    try {
+      const res = await inventoryApi.getInventories(roomId, start, end);
+      if (res.success && res.data) {
+        setRoomInventories(res.data);
+      }
+    } catch (err: any) {
+      console.warn('재고 조회 실패', err);
+    }
   };
 
   const loadHostReservations = async () => {
@@ -209,6 +230,7 @@ export const HostTab: React.FC = () => {
           await updateAccessToken(res.data.accessToken);
         }
         alert('🎉 사업자 등록 성공! 호스트(HOST) 권한으로 즉시 전환되었습니다.');
+        loadMyAccommodations();
       }
     } catch (err: any) {
       const errMsg = err.response?.data?.message || err.response?.data?.code || err.message;
@@ -228,12 +250,9 @@ export const HostTab: React.FC = () => {
         imageUrls,
       });
       if (res.success && res.data) {
-        setCreatedAccommodation(res.data);
-        saveMyAccommodation(res.data);
-        // 생성된 숙소 ID를 자동으로 다른 폼들에 동기화
-        setTargetAccIdForRoom(res.data.id);
-        setTargetAccIdForRefund(res.data.id);
-        alert(`🎉 숙소 등록 성공! [숙소 ID: ${res.data.id}]\n객실 등록과 환불 정책 대상 숙소 ID가 ${res.data.id}번으로 자동 설정되었습니다.`);
+        alert(`🎉 숙소 등록 성공! [숙소 ID: ${res.data.id}, 상태: ${res.data.listingStatus}]\n객실과 환불정책을 등록하면 LISTED(공개)로 전환할 수 있습니다.`);
+        loadMyAccommodations();
+        handleSelectAccommodation(res.data.id);
       }
     } catch (err: any) {
       const errMsg = err.response?.data?.message || err.response?.data?.code || err.message;
@@ -256,6 +275,8 @@ export const HostTab: React.FC = () => {
         setCreatedRoomId(res.data.id);
         setInventoryForm((prev) => ({ ...prev, roomId: res.data.id }));
         alert(`🎉 객실 등록 성공! [Room ID: ${res.data.id}]\n재고 설정의 대상 객실 ID가 ${res.data.id}번으로 자동 설정되었습니다.`);
+        loadMyAccommodations();
+        if (selectedAccId) handleSelectAccommodation(selectedAccId);
       }
     } catch (err: any) {
       const errMsg = err.response?.data?.message || err.response?.data?.code || err.message;
@@ -263,59 +284,11 @@ export const HostTab: React.FC = () => {
     }
   };
 
-  // 4. 환불 규칙 편집
-  const handleAddRule = () => {
-    setRules([...rules, { daysBefore: 1, refundRate: 0.8 }]);
-  };
-
-  const handleRemoveRule = (index: number) => {
-    setRules(rules.filter((_, i) => i !== index));
-  };
-
-  const handleRuleChange = (index: number, field: 'daysBefore' | 'refundRate', value: number) => {
-    const updated = [...rules];
-    updated[index] = { ...updated[index], [field]: value };
-    setRules(updated);
-  };
-
-  const applyTemplate = (type: 'standard' | 'strict' | 'flexible') => {
-    if (type === 'standard') {
-      setPolicyText('체크인 7일 전 100% 환불, 3일 전 50% 환불, 당일 취소 불가');
-      setRules([
-        { daysBefore: 7, refundRate: 1.0 },
-        { daysBefore: 3, refundRate: 0.5 },
-        { daysBefore: 0, refundRate: 0.0 },
-      ]);
-    } else if (type === 'strict') {
-      setPolicyText('체크인 14일 전 100% 환불, 7일 전 50% 환불, 3일 전부터 환불 불가');
-      setRules([
-        { daysBefore: 14, refundRate: 1.0 },
-        { daysBefore: 7, refundRate: 0.5 },
-        { daysBefore: 3, refundRate: 0.0 },
-      ]);
-    } else {
-      setPolicyText('체크인 1일 전까지 100% 전액 무료 취소');
-      setRules([
-        { daysBefore: 1, refundRate: 1.0 },
-        { daysBefore: 0, refundRate: 0.0 },
-      ]);
-    }
-  };
-
   // 4. 환불 정책 PUT 전송
   const handlePutRefundPolicy = async (e: React.FormEvent) => {
     e.preventDefault();
-    setRefundStatusMsg(null);
-
     if (rules.length === 0) {
       alert('환불 규칙을 최소 1개 이상 추가해 주세요.');
-      return;
-    }
-
-    // 중복 daysBefore 검사
-    const daysSet = new Set(rules.map((r) => r.daysBefore));
-    if (daysSet.size !== rules.length) {
-      alert('동일한 일수(daysBefore)를 가진 규칙이 중복되었습니다. 일수를 서로 다르게 설정해 주세요.');
       return;
     }
 
@@ -330,20 +303,14 @@ export const HostTab: React.FC = () => {
 
       const res = await hostApi.putRefundPolicy(targetAccIdForRefund, payload);
       if (res.success && res.data) {
-        setRefundStatusMsg({
-          text: `✅ 환불 정책 반영 성공! (버전: ${res.data.version}, 정책ID: ${res.data.id})`,
-          error: false,
-        });
-        alert(`환불 정책이 성공적으로 반영되었습니다! (버전: ${res.data.version})`);
+        alert(`🎉 환불 정책 반영 성공! (버전: ${res.data.version}, 정책ID: ${res.data.id})`);
+        loadMyAccommodations();
+        if (selectedAccId) handleSelectAccommodation(selectedAccId);
       }
     } catch (err: any) {
       const errData = err.response?.data;
       const errMsg = errData?.message || errData?.code || err.message;
-      setRefundStatusMsg({
-        text: `❌ 실패 [${errData?.code || 'ERROR'}]: ${errMsg}`,
-        error: true,
-      });
-      alert(`환불 정책 설정 실패:\n[${errData?.code || 'ERROR'}] ${errMsg}\n\n* 안내: 본인이 등록한 숙소 ID인지 확인해 주세요.`);
+      alert(`환불 정책 설정 실패 [${errData?.code || 'ERROR'}]:\n${errMsg}`);
     }
   };
 
@@ -359,7 +326,8 @@ export const HostTab: React.FC = () => {
         closed: inventoryForm.closed,
       });
       if (res.success) {
-        alert(`성공! 총 ${res.data.length}개 일자의 객실 재고가 설정되었습니다.`);
+        alert(`🎉 성공! 총 ${res.data.length}개 일자의 객실 재고가 설정되었습니다.`);
+        loadRoomInventories(inventoryForm.roomId, inventoryForm.startDate, inventoryForm.endDate);
       }
     } catch (err: any) {
       const errMsg = err.response?.data?.message || err.response?.data?.code || err.message;
@@ -386,9 +354,9 @@ export const HostTab: React.FC = () => {
   return (
     <div className="tab-pane">
       <div className="section-header">
-        <h2>🏨 호스트 관리 (사업자 & 숙소 & 객실 & 재고 & 예약 관리)</h2>
+        <h2>🏨 호스트 관리 (신규 5개 API 연동: 숙소목록/상세/공개전환/기간별재고/객실판매상태)</h2>
         <p className="section-desc">
-          사업자 등록을 거쳐 HOST 권한을 얻고, 숙소 등록(POST /api/host/accommodations), 객실 등록, 환불정책 및 일자별 재고 설정을 수행합니다.
+          내 숙소 목록(GET /api/host/accommodations), 내 숙소 상세(GET /api/host/accommodations/&#123;id&#125;), 공개 상태 변경(PATCH /listing-status), 기간별 재고 조회/설정(GET/PUT /inventories), 객실 판매 중지/수정을 검증합니다.
         </p>
       </div>
 
@@ -436,29 +404,20 @@ export const HostTab: React.FC = () => {
 
       {!isHost && (
         <div className="alert alert-warning" style={{ marginBottom: '20px' }}>
-          ⚠️ 현재 회원은 <strong>HOST</strong> 권한이 아닙니다. 숙소/객실 등록 및 재고 설정을 수행하려면 위에서 사업자를 등록해 주세요.
+          ⚠️ 현재 회원은 <strong>HOST</strong> 권한이 아닙니다. 먼저 사업자 등록을 진행해 주세요.
         </div>
       )}
 
-      {/* 내 숙소 목록 카드 */}
+      {/* [신규 API 1] 내 숙소 목록 카드 (GET /api/host/accommodations) */}
       {isHost && (
         <div className="card" style={{ marginBottom: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <h3 className="card-title" style={{ margin: 0 }}>
-              🏠 내가 등록한 숙소 관리 목록 ({myAccommodations.length}개)
+              🏠 내 숙소 목록 (GET /api/host/accommodations) - 총 {myAccommodations.length}개
             </h3>
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-              <input
-                type="number"
-                placeholder="기존 숙소 ID 입력"
-                value={manualAccIdInput}
-                onChange={(e) => setManualAccIdInput(e.target.value)}
-                style={{ width: '130px', padding: '4px 8px', fontSize: '12px' }}
-              />
-              <button className="btn-outline-sm" onClick={handleRegisterManualId}>
-                + 목록에 추가
-              </button>
-            </div>
+            <button className="btn-outline-sm" onClick={loadMyAccommodations}>
+              새로고침
+            </button>
           </div>
 
           {myAccommodations.length === 0 ? (
@@ -466,67 +425,66 @@ export const HostTab: React.FC = () => {
               아직 등록된 숙소가 없습니다. 아래 2단계에서 새 숙소를 등록해 보세요!
             </p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '12px' }}>
               {myAccommodations.map((acc) => {
-                const isListed = acc.listingStatus === 'LISTED';
-                const hasRooms = acc.rooms && acc.rooms.length > 0;
-                const hasPolicy = !!acc.refundPolicy;
-
+                const isSelected = selectedAccId === acc.id;
                 return (
                   <div
                     key={acc.id}
+                    onClick={() => handleSelectAccommodation(acc.id)}
                     style={{
-                      border: '1px solid #e2e8f0',
+                      border: isSelected ? '2px solid #0284c7' : '1px solid #cbd5e1',
                       borderRadius: '8px',
-                      padding: '12px 16px',
-                      backgroundColor: '#f8fafc',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      flexWrap: 'wrap',
-                      gap: '12px',
+                      padding: '12px 14px',
+                      backgroundColor: isSelected ? '#f0f9ff' : '#ffffff',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
                     }}
                   >
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <strong style={{ fontSize: '15px' }}>{acc.name}</strong>
-                        <span style={{ fontSize: '12px', color: '#64748b' }}>[숙소 ID: {acc.id}]</span>
-                        <span className={`status-pill status-${isListed ? 'confirmed' : 'pending'}`}>
-                          {acc.listingStatus} ({isListed ? '공개 중' : '비공개 DRAFT'})
-                        </span>
-                      </div>
-                      <div style={{ fontSize: '13px', color: '#475569', marginTop: '4px' }}>
-                        {acc.address} · {acc.categoryName} ({acc.regionName})
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', display: 'flex', gap: '12px' }}>
-                        <span>🛏️ 등록 객실: <strong>{acc.rooms?.length || 0}개</strong></span>
-                        <span>📜 환불 정책: <strong>{hasPolicy ? '설정 완료' : '미설정'}</strong></span>
-                      </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <strong style={{ fontSize: '15px' }}>{acc.name}</strong>
+                      <span className={`status-pill status-${acc.listingStatus.toLowerCase()}`}>
+                        {acc.listingStatus}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                      ID: #{acc.id} · {acc.categoryName} · {acc.regionName}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#334155', marginTop: '4px' }}>
+                      {acc.address}
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <button
-                        type="button"
-                        className="btn-outline-sm"
-                        onClick={() => {
-                          setTargetAccIdForRoom(acc.id);
-                          setTargetAccIdForRefund(acc.id);
-                          if (acc.rooms && acc.rooms.length > 0) {
-                            setInventoryForm((prev) => ({ ...prev, roomId: acc.rooms[0].id }));
-                          }
-                          alert(`숙소 [ID: ${acc.id} - ${acc.name}]가 선택되었습니다.\n아래 객실/환불정책/재고 폼에 ID가 반영되었습니다.`);
-                        }}
-                      >
-                        👇 이 숙소 선택하기
-                      </button>
+                    <div style={{ marginTop: '8px', fontSize: '11px', display: 'flex', gap: '8px', color: '#475569' }}>
+                      <span>🛏️ 객실: {acc.activeRoomCount}/{acc.roomCount}개</span>
+                      <span>📜 환불정책: {acc.hasRefundPolicy ? '✅' : '❌'}</span>
+                      <span>공개준비: {acc.readyToList ? '🟢 가능' : '🔴 불가'}</span>
+                    </div>
 
+                    {/* [신규 API 3] 공개 상태 변경 버튼 (PATCH /api/host/accommodations/{id}/listing-status) */}
+                    <div style={{ marginTop: '10px', display: 'flex', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
                       <button
-                        type="button"
-                        className={isListed ? 'btn-danger btn-sm' : 'btn-success btn-sm'}
-                        onClick={() => handleToggleListingStatus(acc)}
-                        title={!hasRooms || !hasPolicy ? '객실과 환불정책이 모두 등록되어야 공개할 수 있습니다' : ''}
+                        className="btn-outline-sm"
+                        style={{ fontSize: '11px', padding: '2px 6px', backgroundColor: acc.listingStatus === 'DRAFT' ? '#e2e8f0' : 'transparent' }}
+                        onClick={() => handleChangeListingStatus(acc.id, 'DRAFT')}
                       >
-                        {isListed ? '🔒 비공개 전환' : '🌐 공개(LISTED) 전환'}
+                        DRAFT
+                      </button>
+                      <button
+                        className="btn-success"
+                        style={{ fontSize: '11px', padding: '2px 6px' }}
+                        disabled={acc.listingStatus === 'LISTED'}
+                        onClick={() => handleChangeListingStatus(acc.id, 'LISTED')}
+                        title={!acc.readyToList ? '판매 중인 객실과 환불정책이 있어야 합니다' : ''}
+                      >
+                        🌐 LISTED (공개)
+                      </button>
+                      <button
+                        className="btn-danger"
+                        style={{ fontSize: '11px', padding: '2px 6px' }}
+                        disabled={acc.listingStatus === 'HIDDEN'}
+                        onClick={() => handleChangeListingStatus(acc.id, 'HIDDEN')}
+                      >
+                        🔒 HIDDEN (숨김)
                       </button>
                     </div>
                   </div>
@@ -537,34 +495,109 @@ export const HostTab: React.FC = () => {
         </div>
       )}
 
+      {/* [신규 API 2] 선택된 내 숙소 상세 보기 (GET /api/host/accommodations/{id}) */}
+      {selectedAccDetail && (
+        <div className="card" style={{ marginBottom: '20px', borderLeft: '4px solid #0284c7' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h3 className="card-title" style={{ margin: 0 }}>
+                🔍 [선택된 숙소 상세] #{selectedAccDetail.id} {selectedAccDetail.name}
+              </h3>
+              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                체크인: {selectedAccDetail.checkInTime} ~ 체크아웃: {selectedAccDetail.checkOutTime} | 공개상태: <strong>{selectedAccDetail.listingStatus}</strong>
+              </div>
+            </div>
+            <button className="btn-outline-sm" onClick={() => handleSelectAccommodation(selectedAccDetail.id)}>
+              상세 새로고침
+            </button>
+          </div>
+
+          {/* 객실 목록 & [신규 API 5] 객실 판매 상태(ACTIVE / INACTIVE) 변경 */}
+          <div style={{ marginTop: '14px' }}>
+            <h4 style={{ fontSize: '13px', color: '#334155' }}>
+              🛏️ 등록된 객실 목록 ({selectedAccDetail.rooms?.length || 0}개) - 판매 상태 변경 (PATCH /rooms/&#123;roomId&#125;)
+            </h4>
+            {selectedAccDetail.rooms?.length === 0 ? (
+              <p style={{ fontSize: '12px', color: '#94a3b8' }}>등록된 객실이 없습니다. 아래 3단계에서 객실을 추가하세요.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                {selectedAccDetail.rooms.map((room) => {
+                  const isActive = room.status === 'ACTIVE';
+                  return (
+                    <div
+                      key={room.id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '8px 12px',
+                        background: '#f8fafc',
+                        borderRadius: '6px',
+                        border: '1px solid #e2e8f0',
+                      }}
+                    >
+                      <div>
+                        <strong>{room.name}</strong> (Room ID: #{room.id}) | 기준 {room.capacity}명 / 최대 {room.maxCapacity}명 | 1박 {room.nightlyPrice.toLocaleString()}원
+                        <span className={`status-pill status-${isActive ? 'confirmed' : 'cancelled'}`} style={{ marginLeft: '8px' }}>
+                          {room.status}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          type="button"
+                          className="btn-outline-sm"
+                          onClick={() => {
+                            setInventoryForm((prev) => ({ ...prev, roomId: room.id }));
+                            loadRoomInventories(room.id, inventoryForm.startDate, inventoryForm.endDate);
+                          }}
+                        >
+                          📅 재고 조회/설정
+                        </button>
+                        <button
+                          type="button"
+                          className={isActive ? 'btn-danger btn-sm' : 'btn-success btn-sm'}
+                          onClick={() => handleToggleRoomStatus(room.id, room.status)}
+                        >
+                          {isActive ? '판매 중지 (INACTIVE)' : '판매 재개 (ACTIVE)'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="grid-2col">
-        {/* 숙소 등록 */}
+        {/* 2단계: 숙소 신규 등록 */}
         <div className="card">
-          <h3 className="card-title">🏡 2단계: 숙소 등록 (POST /api/host/accommodations)</h3>
+          <h3 className="card-title">🏡 2단계: 새 숙소 등록 (POST /api/host/accommodations)</h3>
           <form onSubmit={handleCreateAccommodation} className="form-stack">
             <div className="grid-2col">
               <div className="form-group">
-                <label>지역 선택 (Region)</label>
+                <label>지역 선택</label>
                 <select
                   value={accForm.regionId}
                   onChange={(e) => setAccForm({ ...accForm, regionId: Number(e.target.value) })}
                 >
                   {regions.map((r) => (
                     <option key={r.id} value={r.id}>
-                      {r.name} (ID: {r.id})
+                      {r.name}
                     </option>
                   ))}
                 </select>
               </div>
               <div className="form-group">
-                <label>카테고리 선택 (Category)</label>
+                <label>카테고리 선택</label>
                 <select
                   value={accForm.categoryId}
                   onChange={(e) => setAccForm({ ...accForm, categoryId: Number(e.target.value) })}
                 >
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name} (ID: {c.id})
+                      {c.name}
                     </option>
                   ))}
                 </select>
@@ -598,7 +631,6 @@ export const HostTab: React.FC = () => {
                   type="text"
                   value={accForm.checkInTime}
                   onChange={(e) => setAccForm({ ...accForm, checkInTime: e.target.value })}
-                  placeholder="15:00:00"
                   required
                 />
               </div>
@@ -608,7 +640,6 @@ export const HostTab: React.FC = () => {
                   type="text"
                   value={accForm.checkOutTime}
                   onChange={(e) => setAccForm({ ...accForm, checkOutTime: e.target.value })}
-                  placeholder="11:00:00"
                   required
                 />
               </div>
@@ -623,52 +654,24 @@ export const HostTab: React.FC = () => {
               />
             </div>
 
-            <div className="form-group">
-              <label>대표 이미지 URL</label>
-              <input
-                type="text"
-                value={accForm.imageUrls}
-                onChange={(e) => setAccForm({ ...accForm, imageUrls: e.target.value })}
-              />
-            </div>
-
             <button type="submit" className="btn-primary" disabled={!isHost}>
-              숙소 등록하기
+              숙소 등록하기 (생성 시 DRAFT 상태)
             </button>
           </form>
-
-          {createdAccommodation && (
-            <div className="alert alert-success" style={{ marginTop: '12px' }}>
-              숙소 생성 완료! ID: <strong>{createdAccommodation.id}</strong> (명칭:{' '}
-              {createdAccommodation.name})
-            </div>
-          )}
         </div>
 
-        {/* 객실 등록 */}
+        {/* 3단계: 객실 등록 */}
         <div className="card">
-          <h3 className="card-title">🛏️ 3단계: 객실 등록 (POST /api/host/accommodations/&#123;id&#125;/rooms)</h3>
+          <h3 className="card-title">🛏️ 3단계: 객실 추가 (POST /api/host/accommodations/&#123;id&#125;/rooms)</h3>
           <form onSubmit={handleAddRoom} className="form-stack">
             <div className="form-group">
-              <label>대상 숙소 ID (내 소유 숙소)</label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <input
-                  type="number"
-                  value={targetAccIdForRoom}
-                  onChange={(e) => setTargetAccIdForRoom(Number(e.target.value))}
-                  required
-                  style={{ flex: 1 }}
-                />
-                {createdAccommodation && (
-                  <button
-                    type="button"
-                    className="btn-outline-sm"
-                    onClick={() => setTargetAccIdForRoom(createdAccommodation.id)}
-                  >
-                    방금 만든 숙소(ID: {createdAccommodation.id}) 넣기
-                  </button>
-                )}
-              </div>
+              <label>대상 숙소 ID</label>
+              <input
+                type="number"
+                value={targetAccIdForRoom}
+                onChange={(e) => setTargetAccIdForRoom(Number(e.target.value))}
+                required
+              />
             </div>
 
             <div className="form-group">
@@ -706,7 +709,7 @@ export const HostTab: React.FC = () => {
 
             <div className="grid-2col">
               <div className="form-group">
-                <label>기본 1박 요금 (원)</label>
+                <label>1박 기본 요금 (원)</label>
                 <input
                   type="number"
                   value={roomForm.nightlyPrice}
@@ -732,47 +735,28 @@ export const HostTab: React.FC = () => {
 
           {createdRoomId && (
             <div className="alert alert-success" style={{ marginTop: '12px' }}>
-              객실 생성 완료! Room ID: <strong>{createdRoomId}</strong>
+              객실 생성 완료! Room ID: <strong>#{createdRoomId}</strong>
             </div>
           )}
         </div>
       </div>
 
       <div className="grid-2col" style={{ marginTop: '20px' }}>
-        {/* 환불 정책 등록 */}
+        {/* 4단계: 환불 정책 설정 */}
         <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="card-title">📜 4단계: 환불 정책 설정 (PUT /api/host/accommodations/&#123;id&#125;/refund-policy)</h3>
-          </div>
-
+          <h3 className="card-title">📜 4단계: 환불 정책 설정 (PUT /api/host/accommodations/&#123;id&#125;/refund-policy)</h3>
           <form onSubmit={handlePutRefundPolicy} className="form-stack">
             <div className="form-group">
-              <label>대상 숙소 ID (반드시 본인이 등록한 숙소 ID)</label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <input
-                  type="number"
-                  value={targetAccIdForRefund}
-                  onChange={(e) => setTargetAccIdForRefund(Number(e.target.value))}
-                  required
-                  style={{ flex: 1 }}
-                />
-                {createdAccommodation && (
-                  <button
-                    type="button"
-                    className="btn-outline-sm"
-                    onClick={() => setTargetAccIdForRefund(createdAccommodation.id)}
-                  >
-                    내 숙소(ID: {createdAccommodation.id}) 채우기
-                  </button>
-                )}
-              </div>
-              <small style={{ color: '#64748b' }}>
-                * 다른 호스트의 숙소 ID를 입력하면 <code>ACCOMMODATION-002 (본인 소유 아님)</code> 에러가 발생합니다.
-              </small>
+              <label>대상 숙소 ID</label>
+              <input
+                type="number"
+                value={targetAccIdForRefund}
+                onChange={(e) => setTargetAccIdForRefund(Number(e.target.value))}
+                required
+              />
             </div>
-
             <div className="form-group">
-              <label>환불 정책 안내 문구</label>
+              <label>환불 정책 텍스트</label>
               <input
                 type="text"
                 value={policyText}
@@ -781,112 +765,71 @@ export const HostTab: React.FC = () => {
               />
             </div>
 
-            {/* 템플릿 버튼 */}
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>빠른 템플릿:</span>
-              <button type="button" className="btn-outline-sm" onClick={() => applyTemplate('standard')}>
-                표준 정책 (7일전 100%, 3일전 50%)
-              </button>
-              <button type="button" className="btn-outline-sm" onClick={() => applyTemplate('strict')}>
-                엄격 정책 (14일전 100%)
-              </button>
-              <button type="button" className="btn-outline-sm" onClick={() => applyTemplate('flexible')}>
-                유연 정책 (1일전 100%)
-              </button>
-            </div>
-
-            {/* 규칙 목록 테이블 */}
+            {/* 규칙 목록 */}
             <div className="form-group">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <label>환불 규칙 목록 (daysBefore 일수 & refundRate 환불비율 0~1)</label>
-                <button type="button" className="btn-outline-sm" onClick={handleAddRule}>
-                  + 규칙 행 추가
-                </button>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {rules.map((rule, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <span style={{ fontSize: '12px', color: '#64748b', minWidth: '45px' }}>
-                      체크인
-                    </span>
-                    <input
-                      type="number"
-                      value={rule.daysBefore}
-                      onChange={(e) => handleRuleChange(idx, 'daysBefore', Number(e.target.value))}
-                      min={0}
-                      style={{ width: '80px' }}
-                      required
-                    />
-                    <span style={{ fontSize: '12px', color: '#64748b' }}>일 전까지</span>
-
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="1"
-                      value={rule.refundRate}
-                      onChange={(e) => handleRuleChange(idx, 'refundRate', Number(e.target.value))}
-                      style={{ width: '90px' }}
-                      required
-                    />
-                    <span style={{ fontSize: '12px', color: '#0284c7', fontWeight: 600, minWidth: '60px' }}>
-                      ({Math.round(rule.refundRate * 100)}% 환불)
-                    </span>
-
-                    {rules.length > 1 && (
-                      <button
-                        type="button"
-                        className="btn-danger btn-sm"
-                        onClick={() => handleRemoveRule(idx)}
-                      >
-                        삭제
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
+              <label>환불 규칙 (daysBefore 일수 & refundRate 비율 0~1)</label>
+              {rules.map((rule, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
+                  <span>체크인</span>
+                  <input
+                    type="number"
+                    value={rule.daysBefore}
+                    onChange={(e) => {
+                      const updated = [...rules];
+                      updated[idx].daysBefore = Number(e.target.value);
+                      setRules(updated);
+                    }}
+                    style={{ width: '70px' }}
+                  />
+                  <span>일 전까지:</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="1"
+                    value={rule.refundRate}
+                    onChange={(e) => {
+                      const updated = [...rules];
+                      updated[idx].refundRate = Number(e.target.value);
+                      setRules(updated);
+                    }}
+                    style={{ width: '80px' }}
+                  />
+                  <span>({Math.round(rule.refundRate * 100)}% 환불)</span>
+                </div>
+              ))}
             </div>
 
             <button type="submit" className="btn-primary" disabled={!isHost}>
-              환불 정책 반영 (PUT)
+              환불 정책 반영
             </button>
           </form>
-
-          {refundStatusMsg && (
-            <div
-              className={`alert ${refundStatusMsg.error ? 'alert-warning' : 'alert-success'}`}
-              style={{ marginTop: '12px' }}
-            >
-              {refundStatusMsg.text}
-            </div>
-          )}
         </div>
 
-        {/* 재고 & 가격 일괄 설정 */}
+        {/* 5단계: [신규 API 4] 기간별 재고 조회 & 설정 (GET & PUT /api/host/rooms/{roomId}/inventories) */}
         <div className="card">
-          <h3 className="card-title">📅 5단계: 객실 재고 & 요금 설정 (PUT /api/host/rooms/&#123;roomId&#125;/inventories)</h3>
-          <form onSubmit={handleSetInventories} className="form-stack">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 className="card-title" style={{ margin: 0 }}>
+              📅 5단계: 기간별 재고 조회 & 요금 설정
+            </h3>
+            <button
+              className="btn-outline-sm"
+              onClick={() => loadRoomInventories(inventoryForm.roomId, inventoryForm.startDate, inventoryForm.endDate)}
+              disabled={!isHost}
+            >
+              재고 조회 (GET)
+            </button>
+          </div>
+
+          <form onSubmit={handleSetInventories} className="form-stack" style={{ marginTop: '12px' }}>
             <div className="form-group">
-              <label>대상 객실 Room ID</label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <input
-                  type="number"
-                  value={inventoryForm.roomId}
-                  onChange={(e) => setInventoryForm({ ...inventoryForm, roomId: Number(e.target.value) })}
-                  required
-                  style={{ flex: 1 }}
-                />
-                {createdRoomId && (
-                  <button
-                    type="button"
-                    className="btn-outline-sm"
-                    onClick={() => setInventoryForm({ ...inventoryForm, roomId: createdRoomId })}
-                  >
-                    방금 만든 객실(ID: {createdRoomId}) 넣기
-                  </button>
-                )}
-              </div>
+              <label>대상 객실 ID (Room ID)</label>
+              <input
+                type="number"
+                value={inventoryForm.roomId}
+                onChange={(e) => setInventoryForm({ ...inventoryForm, roomId: Number(e.target.value) })}
+                required
+              />
             </div>
             <div className="grid-2col">
               <div className="form-group">
@@ -910,7 +853,7 @@ export const HostTab: React.FC = () => {
             </div>
             <div className="grid-2col">
               <div className="form-group">
-                <label>일자별 판매 수량 (totalCount)</label>
+                <label>총 수량</label>
                 <input
                   type="number"
                   value={inventoryForm.totalCount}
@@ -919,7 +862,7 @@ export const HostTab: React.FC = () => {
                 />
               </div>
               <div className="form-group">
-                <label>1박 가격 (price)</label>
+                <label>1박 가격 (원)</label>
                 <input
                   type="number"
                   value={inventoryForm.price}
@@ -928,9 +871,39 @@ export const HostTab: React.FC = () => {
               </div>
             </div>
             <button type="submit" className="btn-primary" disabled={!isHost}>
-              재고/요금 일괄 등록
+              재고/요금 일괄 설정 (PUT)
             </button>
           </form>
+
+          {/* 재고 조회 결과 테이블 (GET 응답) */}
+          {roomInventories.length > 0 && (
+            <div style={{ marginTop: '14px', maxHeight: '180px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '4px' }}>
+              <table style={{ width: '100%', fontSize: '11px', textAlign: 'left', borderCollapse: 'collapse' }}>
+                <thead style={{ background: '#f1f5f9', position: 'sticky', top: 0 }}>
+                  <tr>
+                    <th style={{ padding: '4px 6px' }}>날짜</th>
+                    <th style={{ padding: '4px 6px' }}>수량</th>
+                    <th style={{ padding: '4px 6px' }}>예약</th>
+                    <th style={{ padding: '4px 6px' }}>선점</th>
+                    <th style={{ padding: '4px 6px' }}>가격</th>
+                    <th style={{ padding: '4px 6px' }}>마감</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {roomInventories.map((inv) => (
+                    <tr key={inv.stayDate} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '4px 6px' }}>{inv.stayDate}</td>
+                      <td style={{ padding: '4px 6px' }}>{inv.totalCount}</td>
+                      <td style={{ padding: '4px 6px', color: '#16a34a' }}>{inv.bookedCount}</td>
+                      <td style={{ padding: '4px 6px', color: '#ea580c' }}>{inv.heldCount}</td>
+                      <td style={{ padding: '4px 6px' }}>{inv.price.toLocaleString()}원</td>
+                      <td style={{ padding: '4px 6px' }}>{inv.closed ? '🔴' : '🟢'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 

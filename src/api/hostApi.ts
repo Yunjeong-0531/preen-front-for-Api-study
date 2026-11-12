@@ -4,9 +4,11 @@ import {
   AccommodationDetail,
   AccommodationUpdateRequest,
   ApiResponse,
+  HostAccommodationSummary,
   HostBusinessResponse,
   HostRegisterRequest,
   HostRegisterResponse,
+  ListingStatus,
   PageResponse,
   RefundPolicyRequest,
   RefundPolicyResponse,
@@ -31,15 +33,36 @@ export const hostApi = {
     return res.data;
   },
 
+  // 내 숙소 목록 (GET /api/host/accommodations)
+  getMyAccommodations: async () => {
+    const res = await apiClient.get<ApiResponse<HostAccommodationSummary[]>>('/api/host/accommodations');
+    return res.data;
+  },
+
+  // 내 숙소 상세 (GET /api/host/accommodations/{id})
+  getMyAccommodationDetail: async (id: number) => {
+    const res = await apiClient.get<ApiResponse<AccommodationDetail>>(`/api/host/accommodations/${id}`);
+    return res.data;
+  },
+
   // 숙소 등록
   createAccommodation: async (data: AccommodationCreateRequest) => {
     const res = await apiClient.post<ApiResponse<AccommodationDetail>>('/api/host/accommodations', data);
     return res.data;
   },
 
-  // 숙소 수정
+  // 숙소 세부사항 수정
   updateAccommodation: async (id: number, data: AccommodationUpdateRequest) => {
     const res = await apiClient.patch<ApiResponse<AccommodationDetail>>(`/api/host/accommodations/${id}`, data);
+    return res.data;
+  },
+
+  // 숙소 공개 상태 변경 (PATCH /api/host/accommodations/{id}/listing-status)
+  changeListingStatus: async (id: number, listingStatus: ListingStatus) => {
+    const res = await apiClient.patch<ApiResponse<AccommodationDetail>>(
+      `/api/host/accommodations/${id}/listing-status`,
+      { listingStatus }
+    );
     return res.data;
   },
 
