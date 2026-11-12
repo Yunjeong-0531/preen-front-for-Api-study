@@ -31,12 +31,6 @@ export const hostApi = {
     return res.data;
   },
 
-  // 호스트 본인이 등록한 숙소 목록 조회 (GET /api/host/accommodations)
-  getMyAccommodations: async () => {
-    const res = await apiClient.get<ApiResponse<AccommodationDetail[]>>('/api/host/accommodations');
-    return res.data;
-  },
-
   // 숙소 등록
   createAccommodation: async (data: AccommodationCreateRequest) => {
     const res = await apiClient.post<ApiResponse<AccommodationDetail>>('/api/host/accommodations', data);

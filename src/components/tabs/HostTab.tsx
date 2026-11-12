@@ -78,6 +78,7 @@ export const HostTab: React.FC = () => {
 
   // 호스트 내 숙소 목록
   const [myAccommodations, setMyAccommodations] = useState<AccommodationDetail[]>([]);
+  const [manualAccIdInput, setManualAccIdInput] = useState<string>('');
 
   // 호스트 예약 목록
   const [hostReservations, setHostReservations] = useState<ReservationResponse[]>([]);
@@ -116,29 +117,67 @@ export const HostTab: React.FC = () => {
     }
   };
 
-  const loadMyAccommodations = async () => {
+  const loadMyAccommodations = () => {
     try {
-      const res = await hostApi.getMyAccommodations();
-      if (res.success && res.data) {
-        setMyAccommodations(res.data);
+      const stored = localStorage.getItem('staybook_registered_accommodations');
+      if (stored) {
+        setMyAccommodations(JSON.parse(stored));
       }
-    } catch (err: any) {
-      console.warn('내 숙소 목록 로드 실패', err);
+    } catch (e) {
+      console.warn('로컬 숙소 목록 로드 실패', e);
     }
   };
 
+  const saveMyAccommodation = (acc: AccommodationDetail) => {
+    setMyAccommodations((prev) => {
+      const filtered = prev.filter((item) => item.id !== acc.id);
+      const updated = [acc, ...filtered];
+      localStorage.setItem('staybook_registered_accommodations', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   const handleToggleListingStatus = async (acc: AccommodationDetail) => {
-    const nextStatus = acc.listingStatus === 'LISTED' ? 'UNLISTED' : 'LISTED';
+    const nextStatus: any = acc.listingStatus === 'LISTED' ? 'DRAFT' : 'LISTED';
     try {
       const res = await hostApi.updateAccommodation(acc.id, { listingStatus: nextStatus });
-      if (res.success) {
-        alert(`숙소 상태가 [${nextStatus}]로 변경되었습니다! ${nextStatus === 'LISTED' ? '이제 [숙소 탐색] 탭에서 게스트에게 노출됩니다.' : ''}`);
-        loadMyAccommodations();
+      if (res.success && res.data) {
+        alert(`숙소 상태가 [${res.data.listingStatus}]로 변경되었습니다! ${res.data.listingStatus === 'LISTED' ? '이제 [숙소 탐색] 탭에서 게스트에게 노출됩니다.' : ''}`);
+        saveMyAccommodation(res.data);
       }
     } catch (err: any) {
       const errMsg = err.response?.data?.message || err.response?.data?.code || err.message;
       alert(`상태 변경 실패: ${errMsg}\n\n* 안내: 공개(LISTED)하려면 최소 1개 이상의 객실과 환불 정책이 등록되어 있어야 합니다.`);
     }
+  };
+
+  const handleRegisterManualId = () => {
+    const id = Number(manualAccIdInput);
+    if (!id) return;
+    const manualAcc: AccommodationDetail = {
+      id,
+      name: `숙소 #${id}`,
+      description: '',
+      address: '수동 추가 숙소',
+      regionId: 1,
+      regionName: '',
+      categoryId: 1,
+      categoryName: '',
+      latitude: 0,
+      longitude: 0,
+      checkInTime: '15:00:00',
+      checkOutTime: '11:00:00',
+      listingStatus: 'LISTED',
+      imageUrls: [],
+      amenities: [],
+      rooms: [],
+      refundPolicy: null,
+    };
+    saveMyAccommodation(manualAcc);
+    setTargetAccIdForRoom(id);
+    setTargetAccIdForRefund(id);
+    setManualAccIdInput('');
+    alert(`숙소 ID #${id}번이 내 숙소 관리 목록에 추가되었습니다.`);
   };
 
   const loadHostReservations = async () => {
@@ -190,7 +229,7 @@ export const HostTab: React.FC = () => {
       });
       if (res.success && res.data) {
         setCreatedAccommodation(res.data);
-        loadMyAccommodations();
+        saveMyAccommodation(res.data);
         // 생성된 숙소 ID를 자동으로 다른 폼들에 동기화
         setTargetAccIdForRoom(res.data.id);
         setTargetAccIdForRefund(res.data.id);
@@ -408,9 +447,18 @@ export const HostTab: React.FC = () => {
             <h3 className="card-title" style={{ margin: 0 }}>
               🏠 내가 등록한 숙소 관리 목록 ({myAccommodations.length}개)
             </h3>
-            <button className="btn-outline-sm" onClick={loadMyAccommodations}>
-              목록 새로고침
-            </button>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <input
+                type="number"
+                placeholder="기존 숙소 ID 입력"
+                value={manualAccIdInput}
+                onChange={(e) => setManualAccIdInput(e.target.value)}
+                style={{ width: '130px', padding: '4px 8px', fontSize: '12px' }}
+              />
+              <button className="btn-outline-sm" onClick={handleRegisterManualId}>
+                + 목록에 추가
+              </button>
+            </div>
           </div>
 
           {myAccommodations.length === 0 ? (
