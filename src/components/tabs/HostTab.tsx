@@ -76,6 +76,9 @@ export const HostTab: React.FC = () => {
     closed: false,
   });
 
+  // 호스트 내 숙소 목록
+  const [myAccommodations, setMyAccommodations] = useState<AccommodationDetail[]>([]);
+
   // 호스트 예약 목록
   const [hostReservations, setHostReservations] = useState<ReservationResponse[]>([]);
 
@@ -113,6 +116,31 @@ export const HostTab: React.FC = () => {
     }
   };
 
+  const loadMyAccommodations = async () => {
+    try {
+      const res = await hostApi.getMyAccommodations();
+      if (res.success && res.data) {
+        setMyAccommodations(res.data);
+      }
+    } catch (err: any) {
+      console.warn('내 숙소 목록 로드 실패', err);
+    }
+  };
+
+  const handleToggleListingStatus = async (acc: AccommodationDetail) => {
+    const nextStatus = acc.listingStatus === 'LISTED' ? 'UNLISTED' : 'LISTED';
+    try {
+      const res = await hostApi.updateAccommodation(acc.id, { listingStatus: nextStatus });
+      if (res.success) {
+        alert(`숙소 상태가 [${nextStatus}]로 변경되었습니다! ${nextStatus === 'LISTED' ? '이제 [숙소 탐색] 탭에서 게스트에게 노출됩니다.' : ''}`);
+        loadMyAccommodations();
+      }
+    } catch (err: any) {
+      const errMsg = err.response?.data?.message || err.response?.data?.code || err.message;
+      alert(`상태 변경 실패: ${errMsg}\n\n* 안내: 공개(LISTED)하려면 최소 1개 이상의 객실과 환불 정책이 등록되어 있어야 합니다.`);
+    }
+  };
+
   const loadHostReservations = async () => {
     try {
       const res = await hostApi.getHostReservations();
@@ -126,6 +154,7 @@ export const HostTab: React.FC = () => {
     loadMetadata();
     if (user?.role === 'HOST') {
       loadMyBusiness();
+      loadMyAccommodations();
       loadHostReservations();
     }
   }, [user]);
@@ -161,6 +190,7 @@ export const HostTab: React.FC = () => {
       });
       if (res.success && res.data) {
         setCreatedAccommodation(res.data);
+        loadMyAccommodations();
         // 생성된 숙소 ID를 자동으로 다른 폼들에 동기화
         setTargetAccIdForRoom(res.data.id);
         setTargetAccIdForRefund(res.data.id);
@@ -368,6 +398,94 @@ export const HostTab: React.FC = () => {
       {!isHost && (
         <div className="alert alert-warning" style={{ marginBottom: '20px' }}>
           ⚠️ 현재 회원은 <strong>HOST</strong> 권한이 아닙니다. 숙소/객실 등록 및 재고 설정을 수행하려면 위에서 사업자를 등록해 주세요.
+        </div>
+      )}
+
+      {/* 내 숙소 목록 카드 */}
+      {isHost && (
+        <div className="card" style={{ marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h3 className="card-title" style={{ margin: 0 }}>
+              🏠 내가 등록한 숙소 관리 목록 ({myAccommodations.length}개)
+            </h3>
+            <button className="btn-outline-sm" onClick={loadMyAccommodations}>
+              목록 새로고침
+            </button>
+          </div>
+
+          {myAccommodations.length === 0 ? (
+            <p style={{ color: '#64748b', fontSize: '13px' }}>
+              아직 등록된 숙소가 없습니다. 아래 2단계에서 새 숙소를 등록해 보세요!
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {myAccommodations.map((acc) => {
+                const isListed = acc.listingStatus === 'LISTED';
+                const hasRooms = acc.rooms && acc.rooms.length > 0;
+                const hasPolicy = !!acc.refundPolicy;
+
+                return (
+                  <div
+                    key={acc.id}
+                    style={{
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      padding: '12px 16px',
+                      backgroundColor: '#f8fafc',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '12px',
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <strong style={{ fontSize: '15px' }}>{acc.name}</strong>
+                        <span style={{ fontSize: '12px', color: '#64748b' }}>[숙소 ID: {acc.id}]</span>
+                        <span className={`status-pill status-${isListed ? 'confirmed' : 'pending'}`}>
+                          {acc.listingStatus} ({isListed ? '공개 중' : '비공개 DRAFT'})
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '13px', color: '#475569', marginTop: '4px' }}>
+                        {acc.address} · {acc.categoryName} ({acc.regionName})
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', display: 'flex', gap: '12px' }}>
+                        <span>🛏️ 등록 객실: <strong>{acc.rooms?.length || 0}개</strong></span>
+                        <span>📜 환불 정책: <strong>{hasPolicy ? '설정 완료' : '미설정'}</strong></span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="btn-outline-sm"
+                        onClick={() => {
+                          setTargetAccIdForRoom(acc.id);
+                          setTargetAccIdForRefund(acc.id);
+                          if (acc.rooms && acc.rooms.length > 0) {
+                            setInventoryForm((prev) => ({ ...prev, roomId: acc.rooms[0].id }));
+                          }
+                          alert(`숙소 [ID: ${acc.id} - ${acc.name}]가 선택되었습니다.\n아래 객실/환불정책/재고 폼에 ID가 반영되었습니다.`);
+                        }}
+                      >
+                        👇 이 숙소 선택하기
+                      </button>
+
+                      <button
+                        type="button"
+                        className={isListed ? 'btn-danger btn-sm' : 'btn-success btn-sm'}
+                        onClick={() => handleToggleListingStatus(acc)}
+                        title={!hasRooms || !hasPolicy ? '객실과 환불정책이 모두 등록되어야 공개할 수 있습니다' : ''}
+                      >
+                        {isListed ? '🔒 비공개 전환' : '🌐 공개(LISTED) 전환'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
