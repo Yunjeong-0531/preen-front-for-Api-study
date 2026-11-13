@@ -8,7 +8,7 @@ import { AuthTab } from './components/tabs/AuthTab';
 import { HostTab } from './components/tabs/HostTab';
 import { AccommodationTab } from './components/tabs/AccommodationTab';
 import { ReservationPaymentTab } from './components/tabs/ReservationPaymentTab';
-import { ReservationTestLabTab } from './components/tabs/ReservationTestLabTab';
+import { TestLabLayout } from './components/testlab/TestLabLayout';
 import { ReviewTab } from './components/tabs/ReviewTab';
 import { StorageTab } from './components/tabs/StorageTab';
 import './App.css';
@@ -32,7 +32,7 @@ export const AppContent: React.FC = () => {
         {currentTab === 'host' && <HostTab />}
         {currentTab === 'accommodation' && <AccommodationTab />}
         {currentTab === 'reservation' && <ReservationPaymentTab />}
-        {currentTab === 'test-lab' && <ReservationTestLabTab />}
+        {currentTab === 'test-lab' && <TestLabLayout onBackToMainApp={() => setCurrentTab('scenario')} />}
         {currentTab === 'review' && <ReviewTab />}
         {currentTab === 'storage' && <StorageTab />}
       </main>

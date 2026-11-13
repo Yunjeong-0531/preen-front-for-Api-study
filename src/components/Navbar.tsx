@@ -34,7 +34,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab }) => {
     { id: 'host', label: '호스트 관리', icon: '🏨' },
     { id: 'accommodation', label: '숙소 탐색', icon: '🔍' },
     { id: 'reservation', label: '예약 & 결제', icon: '💳' },
-    { id: 'test-lab', label: '🧪 예약·결제 테스트 랩', icon: '🧪' },
+    { id: 'test-lab', label: '🧪 백엔드 전체 테스트 랩', icon: '🧪' },
     { id: 'review', label: '리뷰 & Spotify', icon: '⭐' },
     { id: 'storage', label: '이미지 업로드', icon: '🖼️' },
   ];
